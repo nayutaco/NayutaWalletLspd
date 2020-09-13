@@ -52,6 +52,7 @@ var (
 )
 
 func (s *server) ChannelInformation(ctx context.Context, in *lspdrpc.ChannelInformationRequest) (*lspdrpc.ChannelInformationReply, error) {
+	log.Printf("publicKey.SerializeCompressed(): %x", publicKey.SerializeCompressed())
 	return &lspdrpc.ChannelInformationReply{
 		Name:                nodeName,
 		Pubkey:              nodePubkey,
