@@ -17,7 +17,7 @@ const (
 	timeLockDelta             = 144
 	channelFeePermyriad       = 40
 	channelMinimumFeeMsat     = 2_000_000
-	additionalChannelCapacity = 100_000
+	additionalChannelCapacity = 30_000
 	maxInactiveDuration       = 45 * 24 * 3600
 )
 
