@@ -118,6 +118,8 @@ func intercept() {
 		for {
 			request, err := interceptorClient.Recv()
 			if err != nil {
+				log.Printf("error in interceptor.Recv() %#v", err)
+				time.Sleep(5 * time.Second)
 				// If it is  just the error result of the context cancellation
 				// the we exit silently.
 				status, ok := status.FromError(err)
