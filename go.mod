@@ -48,7 +48,6 @@ require (
 	github.com/go-acme/lego/v3 v3.7.0 // indirect
 	github.com/go-errors/errors v1.0.1 // indirect
 	github.com/gogo/protobuf v1.3.1 // indirect
-	github.com/golang-migrate/migrate v3.5.4+incompatible // indirect
 	github.com/google/btree v1.0.0 // indirect
 	github.com/google/uuid v1.2.0 // indirect
 	github.com/gorilla/websocket v1.4.2 // indirect
