@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/breez/lspd/cln_plugin/proto"
+	orderedmap "github.com/wk8/go-ordered-map/v2"
 	grpc "google.golang.org/grpc"
 	"google.golang.org/grpc/keepalive"
 )
@@ -52,6 +53,7 @@ type server struct {
 	htlcStream             proto.ClnPlugin_HtlcStreamServer
 	htlcSendQueue          chan *htlcAcceptedMsg
 	htlcRecvQueue          chan *htlcResultMsg
+	inflightHtlcs          *orderedmap.OrderedMap[string, *htlcAcceptedMsg]
 	custommsgNewSubscriber chan struct{}
 	custommsgStream        proto.ClnPlugin_CustomMsgStreamServer
 	custommsgSendQueue     chan *custommsgMsg
@@ -71,6 +73,7 @@ func NewServer(listenAddress string, subscriberTimeout time.Duration) *server {
 		// cln plugin. If there is no subscriber active within the subscriber
 		// timeout period these results can be put directly on the receive queue.
 		htlcRecvQueue:      make(chan *htlcResultMsg, 10000),
+		inflightHtlcs:      orderedmap.New[string, *htlcAcceptedMsg](),
 		custommsgRecvQueue: make(chan *custommsgResultMsg, 10000),
 		started:            make(chan struct{}),
 		startError:         make(chan error, 1),
@@ -164,6 +167,11 @@ func (s *server) HtlcStream(stream proto.ClnPlugin_HtlcStreamServer) error {
 
 	s.htlcStream = stream
 
+	// Replay in-flight htlcs in fifo order
+	for pair := s.inflightHtlcs.Oldest(); pair != nil; pair = pair.Next() {
+		sendHtlcAccepted(stream, pair.Value)
+	}
+
 	// Notify listeners that a new subscriber is active. Replace the chan with
 	// a new one immediately in case this subscriber is dropped later.
 	close(s.htlcnewSubscriber)
@@ -199,6 +207,9 @@ func (s *server) ReceiveHtlcResolution() (string, interface{}) {
 	case <-s.done:
 		return "", nil
 	case msg := <-s.htlcRecvQueue:
+		s.mtx.Lock()
+		s.inflightHtlcs.Delete(msg.id)
+		s.mtx.Unlock()
 		return msg.id, msg.result
 	}
 }
@@ -221,6 +232,10 @@ func (s *server) listenHtlcRequests() {
 // Attempts to send a htlc_accepted message to the grpc client. The message will
 // be held until a subscriber is active, or the subscriber timeout expires.
 func (s *server) handleHtlcAccepted(msg *htlcAcceptedMsg) {
+	s.mtx.Lock()
+	s.inflightHtlcs.Set(msg.id, msg)
+	s.mtx.Unlock()
+
 	for {
 		s.mtx.Lock()
 		stream := s.htlcStream
@@ -259,26 +274,7 @@ func (s *server) handleHtlcAccepted(msg *htlcAcceptedMsg) {
 		}
 
 		// There is a subscriber. Attempt to send the htlc_accepted message.
-		err := stream.Send(&proto.HtlcAccepted{
-			Correlationid: msg.id,
-			Onion: &proto.Onion{
-				Payload:           msg.htlc.Onion.Payload,
-				ShortChannelId:    msg.htlc.Onion.ShortChannelId,
-				ForwardMsat:       msg.htlc.Onion.ForwardMsat,
-				OutgoingCltvValue: msg.htlc.Onion.OutgoingCltvValue,
-				SharedSecret:      msg.htlc.Onion.SharedSecret,
-				NextOnion:         msg.htlc.Onion.NextOnion,
-			},
-			Htlc: &proto.Htlc{
-				ShortChannelId:     msg.htlc.Htlc.ShortChannelId,
-				Id:                 msg.htlc.Htlc.Id,
-				AmountMsat:         msg.htlc.Htlc.AmountMsat,
-				CltvExpiry:         msg.htlc.Htlc.CltvExpiry,
-				CltvExpiryRelative: msg.htlc.Htlc.CltvExpiryRelative,
-				PaymentHash:        msg.htlc.Htlc.PaymentHash,
-			},
-			ForwardTo: msg.htlc.ForwardTo,
-		})
+		err := sendHtlcAccepted(stream, msg)
 
 		// If there is no error, we're done.
 		if err == nil {
@@ -560,4 +556,27 @@ func (s *server) defaultResult() interface{} {
 	return map[string]interface{}{
 		"result": "continue",
 	}
+}
+
+func sendHtlcAccepted(stream proto.ClnPlugin_HtlcStreamServer, msg *htlcAcceptedMsg) error {
+	return stream.Send(&proto.HtlcAccepted{
+		Correlationid: msg.id,
+		Onion: &proto.Onion{
+			Payload:           msg.htlc.Onion.Payload,
+			ShortChannelId:    msg.htlc.Onion.ShortChannelId,
+			ForwardMsat:       msg.htlc.Onion.ForwardMsat,
+			OutgoingCltvValue: msg.htlc.Onion.OutgoingCltvValue,
+			SharedSecret:      msg.htlc.Onion.SharedSecret,
+			NextOnion:         msg.htlc.Onion.NextOnion,
+		},
+		Htlc: &proto.Htlc{
+			ShortChannelId:     msg.htlc.Htlc.ShortChannelId,
+			Id:                 msg.htlc.Htlc.Id,
+			AmountMsat:         msg.htlc.Htlc.AmountMsat,
+			CltvExpiry:         msg.htlc.Htlc.CltvExpiry,
+			CltvExpiryRelative: msg.htlc.Htlc.CltvExpiryRelative,
+			PaymentHash:        msg.htlc.Htlc.PaymentHash,
+		},
+		ForwardTo: msg.htlc.ForwardTo,
+	})
 }
