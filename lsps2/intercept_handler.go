@@ -44,7 +44,7 @@ type Interceptor struct {
 	inflightPayments         map[string]*paymentState
 }
 
-func NewInterceptor(
+func NewInterceptHandler(
 	store Lsps2Store,
 	client lightning.Client,
 	feeEstimator chain.FeeEstimator,

@@ -136,7 +136,7 @@ func setupInterceptor(
 		config = defaultConfig()
 	}
 
-	i := NewInterceptor(store, client, f, config)
+	i := NewInterceptHandler(store, client, f, config)
 	go i.Start(ctx)
 	return i
 }

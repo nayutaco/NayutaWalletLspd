@@ -30,7 +30,7 @@ type Interceptor struct {
 	notificationService *notifications.NotificationService
 }
 
-func NewInterceptor(
+func NewInterceptHandler(
 	client lightning.Client,
 	config *config.NodeConfig,
 	store InterceptStore,
