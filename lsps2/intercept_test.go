@@ -83,6 +83,12 @@ func defaultFeeEstimator() *mockFeeEstimator {
 	return nil
 }
 
+func defaultopeningService() *mockOpeningService {
+	return &mockOpeningService{
+		isCurrentChainFeeCheaper: false,
+	}
+}
+
 func defaultConfig() *InterceptorConfig {
 	var minConfs uint32 = 1
 	return &InterceptorConfig{
@@ -98,10 +104,11 @@ func defaultConfig() *InterceptorConfig {
 }
 
 type interceptP struct {
-	store        *mockLsps2Store
-	client       *mockLightningClient
-	feeEstimator *mockFeeEstimator
-	config       *InterceptorConfig
+	store          *mockLsps2Store
+	openingService *mockOpeningService
+	client         *mockLightningClient
+	feeEstimator   *mockFeeEstimator
+	config         *InterceptorConfig
 }
 
 func setupInterceptor(
@@ -136,7 +143,14 @@ func setupInterceptor(
 		config = defaultConfig()
 	}
 
-	i := NewInterceptHandler(store, client, f, config)
+	var openingService *mockOpeningService
+	if p != nil && p.openingService != nil {
+		openingService = p.openingService
+	} else {
+		openingService = defaultopeningService()
+	}
+
+	i := NewInterceptHandler(store, openingService, client, f, config)
 	go i.Start(ctx)
 	return i
 }
@@ -570,14 +584,31 @@ func Test_Mpp_ParamsExpireInFlight(t *testing.T) {
 	start := time.Now()
 	store.registrations[defaultScid].OpeningFeeParams.ValidUntil = start.
 		UTC().Add(time.Millisecond * 250).Format(lsps0.TIME_FORMAT)
-	res := i.Intercept(createPart(&part{amt: defaultPaymentSizeMsat - 1}))
-	end := time.Now()
-	assert.Equal(t, shared.INTERCEPT_FAIL_HTLC_WITH_CODE, res.Action)
-	assert.Equal(t, shared.FAILURE_UNKNOWN_NEXT_PEER, res.FailureCode)
 
-	// Using 249 here instead of 250 to avoid flakiness in the test. It
-	// sometimes ccompletes in 249 milliseconds.
-	assert.LessOrEqual(t, int64(249), end.Sub(start).Milliseconds())
+	var res1 shared.InterceptResult
+	var res2 shared.InterceptResult
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() {
+		res1 = i.Intercept(createPart(&part{
+			id:  "first",
+			amt: defaultPaymentSizeMsat - defaultConfig().HtlcMinimumMsat,
+		}))
+		wg.Done()
+	}()
+
+	<-time.After(time.Millisecond * 300)
+	res2 = i.Intercept(createPart(&part{
+		id:  "second",
+		amt: defaultConfig().HtlcMinimumMsat,
+	}))
+
+	wg.Wait()
+	assert.Equal(t, shared.INTERCEPT_FAIL_HTLC_WITH_CODE, res1.Action)
+	assert.Equal(t, shared.FAILURE_UNKNOWN_NEXT_PEER, res1.FailureCode)
+	assert.Equal(t, shared.INTERCEPT_FAIL_HTLC_WITH_CODE, res2.Action)
+	assert.Equal(t, shared.FAILURE_UNKNOWN_NEXT_PEER, res2.FailureCode)
+
 	assertEmpty(t, i)
 }
 

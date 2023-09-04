@@ -29,6 +29,7 @@ type InterceptorConfig struct {
 
 type Interceptor struct {
 	store                    Lsps2Store
+	openingService           shared.OpeningService
 	client                   lightning.Client
 	feeEstimator             chain.FeeEstimator
 	config                   *InterceptorConfig
@@ -38,7 +39,6 @@ type Interceptor struct {
 	notRegistered            chan string
 	paymentReady             chan string
 	paymentTimeout           chan string
-	feeParamsTimeout         chan string
 	paymentFailure           chan *paymentFailureEvent
 	paymentChanOpened        chan *paymentChanOpenedEvent
 	inflightPayments         map[string]*paymentState
@@ -46,6 +46,7 @@ type Interceptor struct {
 
 func NewInterceptHandler(
 	store Lsps2Store,
+	openingService shared.OpeningService,
 	client lightning.Client,
 	feeEstimator chain.FeeEstimator,
 	config *InterceptorConfig,
@@ -55,10 +56,11 @@ func NewInterceptHandler(
 	}
 
 	return &Interceptor{
-		store:        store,
-		client:       client,
-		feeEstimator: feeEstimator,
-		config:       config,
+		store:          store,
+		openingService: openingService,
+		client:         client,
+		feeEstimator:   feeEstimator,
+		config:         config,
 		// TODO: make sure the chan sizes do not lead to deadlocks.
 		newPart:                  make(chan *partState, 1000),
 		partAwaitingRegistration: make(chan *awaitingRegistrationEvent, 1000),
@@ -66,7 +68,6 @@ func NewInterceptHandler(
 		notRegistered:            make(chan string, 1000),
 		paymentReady:             make(chan string, 1000),
 		paymentTimeout:           make(chan string, 1000),
-		feeParamsTimeout:         make(chan string, 1000),
 		paymentFailure:           make(chan *paymentFailureEvent, 1000),
 		paymentChanOpened:        make(chan *paymentChanOpenedEvent, 1000),
 		inflightPayments:         make(map[string]*paymentState),
@@ -74,18 +75,17 @@ func NewInterceptHandler(
 }
 
 type paymentState struct {
-	id                       string
-	fakeScid                 lightning.ShortChannelID
-	incomingSumMsat          uint64
-	outgoingSumMsat          uint64
-	paymentSizeMsat          uint64
-	feeMsat                  uint64
-	registration             *BuyRegistration
-	parts                    map[string]*partState
-	isFinal                  bool
-	timoutChanClosed         bool
-	timeoutChan              chan struct{}
-	isRunningTimeoutListener bool
+	id               string
+	fakeScid         lightning.ShortChannelID
+	incomingSumMsat  uint64
+	outgoingSumMsat  uint64
+	paymentSizeMsat  uint64
+	feeMsat          uint64
+	registration     *BuyRegistration
+	parts            map[string]*partState
+	isFinal          bool
+	timoutChanClosed bool
+	timeoutChan      chan struct{}
 }
 
 func (p *paymentState) closeTimeoutChan() {
@@ -149,8 +149,6 @@ func (i *Interceptor) Start(ctx context.Context) {
 			i.handlePaymentReady(paymentId)
 		case paymentId := <-i.paymentTimeout:
 			i.handlePaymentTimeout(paymentId)
-		case paymentId := <-i.feeParamsTimeout:
-			i.handleFeeParamsTimeout(paymentId)
 		case ev := <-i.paymentFailure:
 			i.handlePaymentFailure(ev.paymentId, ev.code)
 		case ev := <-i.paymentChanOpened:
@@ -264,6 +262,7 @@ func (i *Interceptor) handlePartAwaitingRegistration(ev *awaitingRegistrationEve
 	}
 
 	if part.isFinalized {
+		// This part is already handled.
 		return
 	}
 
@@ -337,40 +336,6 @@ func (i *Interceptor) handlePartAwaitingRegistration(ev *awaitingRegistrationEve
 		}
 	}
 
-	validUntil, err := time.Parse(
-		lsps0.TIME_FORMAT,
-		payment.registration.OpeningFeeParams.ValidUntil,
-	)
-	if err != nil {
-		log.Printf(
-			"Failed parse validUntil '%s' for %s: %v. Failing part.",
-			payment.registration.OpeningFeeParams.ValidUntil,
-			part.req.Scid.ToString(),
-			err,
-		)
-		i.failPart(payment, part, shared.FAILURE_UNKNOWN_NEXT_PEER)
-		return
-	}
-
-	// Expired opening_fee_params are failed back immediately.
-	if time.Now().After(validUntil) {
-		i.failPart(payment, part, shared.FAILURE_UNKNOWN_NEXT_PEER)
-		return
-	}
-
-	if !payment.isRunningTimeoutListener {
-		payment.isRunningTimeoutListener = true
-		go func() {
-			select {
-			case <-time.After(time.Until(validUntil)):
-				// Handle timeout of the opening_fee_params.
-				i.feeParamsTimeout <- part.req.PaymentId()
-			case <-payment.timeoutChan:
-				// Stop listening for timeouts when the payment is ready.
-			}
-		}()
-	}
-
 	// Make sure the cltv delta is enough.
 	if int64(part.req.IncomingExpiry)-int64(part.req.OutgoingExpiry) <
 		int64(i.config.TimeLockDelta)+2 {
@@ -437,16 +402,55 @@ func (i *Interceptor) handlePaymentReady(paymentId string) {
 	// TODO: Handle notifications.
 	// Stops the timeout listeners
 	payment.closeTimeoutChan()
-	go i.openChannel(payment)
+
+	go i.ensureChannelOpen(payment)
 }
 
 // Opens a channel to the destination and waits for the channel to become
 // active. When the channel is active, sends an openChanEvent. Should be run in
 // a goroutine.
-func (i *Interceptor) openChannel(payment *paymentState) {
+func (i *Interceptor) ensureChannelOpen(payment *paymentState) {
 	destination, _ := hex.DecodeString(payment.registration.PeerId)
 
 	if payment.registration.ChannelPoint == nil {
+
+		validUntil, err := time.Parse(
+			lsps0.TIME_FORMAT,
+			payment.registration.OpeningFeeParams.ValidUntil,
+		)
+		if err != nil {
+			log.Printf(
+				"Failed parse validUntil '%s' for paymentId %s: %v",
+				payment.registration.OpeningFeeParams.ValidUntil,
+				payment.id,
+				err,
+			)
+			i.paymentFailure <- &paymentFailureEvent{
+				paymentId: payment.id,
+				code:      shared.FAILURE_UNKNOWN_NEXT_PEER,
+			}
+			return
+		}
+
+		// With expired fee params, the current chainfees are checked. If
+		// they're not cheaper now, fail the payment.
+		if time.Now().After(validUntil) &&
+			!i.openingService.IsCurrentChainFeeCheaper(
+				payment.registration.Token,
+				&payment.registration.OpeningFeeParams,
+			) {
+			log.Printf("LSPS2: Intercepted expired payment registration. "+
+				"Failing payment. scid: %s, valid until: %s, destination: %s",
+				payment.fakeScid.ToString(),
+				payment.registration.OpeningFeeParams.ValidUntil,
+				payment.registration.PeerId,
+			)
+			i.paymentFailure <- &paymentFailureEvent{
+				paymentId: payment.id,
+				code:      shared.FAILURE_UNKNOWN_NEXT_PEER,
+			}
+			return
+		}
 
 		var targetConf *uint32
 		confStr := "<nil>"
@@ -657,10 +661,6 @@ func (i *Interceptor) handlePaymentChanOpened(event *paymentChanOpenedEvent) {
 
 func (i *Interceptor) handlePaymentTimeout(paymentId string) {
 	i.handlePaymentFailure(paymentId, shared.FAILURE_TEMPORARY_CHANNEL_FAILURE)
-}
-
-func (i *Interceptor) handleFeeParamsTimeout(paymentId string) {
-	i.handlePaymentFailure(paymentId, shared.FAILURE_UNKNOWN_NEXT_PEER)
 }
 
 func (i *Interceptor) handlePaymentFailure(
