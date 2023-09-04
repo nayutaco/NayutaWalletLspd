@@ -149,7 +149,7 @@ type part struct {
 	cltvDelta uint32
 }
 
-func createPart(p *part) *InterceptRequest {
+func createPart(p *part) shared.InterceptRequest {
 	id := "first"
 	if p != nil && p.id != "" {
 		id = p.id
@@ -175,7 +175,7 @@ func createPart(p *part) *InterceptRequest {
 		cltv = p.cltvDelta
 	}
 
-	return &InterceptRequest{
+	return shared.InterceptRequest{
 		Identifier:         id,
 		Scid:               scid,
 		PaymentHash:        ph,
@@ -186,9 +186,9 @@ func createPart(p *part) *InterceptRequest {
 	}
 }
 
-func runIntercept(i *Interceptor, req *InterceptRequest, res *InterceptResult, wg *sync.WaitGroup) {
+func runIntercept(i *Interceptor, req shared.InterceptRequest, res *shared.InterceptResult, wg *sync.WaitGroup) {
 	go func() {
-		*res = *i.Intercept(req)
+		*res = i.Intercept(req)
 		wg.Done()
 	}()
 }
@@ -210,7 +210,7 @@ func Test_NotBought_SinglePart(t *testing.T) {
 	defer cancel()
 	i := setupInterceptor(ctx, nil)
 	res := i.Intercept(createPart(&part{scid: 999}))
-	assert.Equal(t, INTERCEPT_CANNOT_HANDLE, res.Action)
+	assert.Equal(t, shared.INTERCEPT_CANNOT_HANDLE, res.Action)
 	assertEmpty(t, i)
 }
 
@@ -221,14 +221,14 @@ func Test_NotBought_TwoParts(t *testing.T) {
 
 	var wg sync.WaitGroup
 	wg.Add(2)
-	var res1 InterceptResult
+	var res1 shared.InterceptResult
 	runIntercept(i, createPart(&part{id: "first", scid: 999}), &res1, &wg)
 
-	var res2 InterceptResult
+	var res2 shared.InterceptResult
 	runIntercept(i, createPart(&part{id: "second", scid: 999}), &res2, &wg)
 	wg.Wait()
-	assert.Equal(t, INTERCEPT_CANNOT_HANDLE, res1.Action)
-	assert.Equal(t, INTERCEPT_CANNOT_HANDLE, res2.Action)
+	assert.Equal(t, shared.INTERCEPT_CANNOT_HANDLE, res1.Action)
+	assert.Equal(t, shared.INTERCEPT_CANNOT_HANDLE, res2.Action)
 	assertEmpty(t, i)
 }
 
@@ -239,7 +239,7 @@ func Test_NoMpp_Happyflow(t *testing.T) {
 	i := setupInterceptor(ctx, nil)
 
 	res := i.Intercept(createPart(nil))
-	assert.Equal(t, INTERCEPT_RESUME_WITH_ONION, res.Action)
+	assert.Equal(t, shared.INTERCEPT_RESUME_WITH_ONION, res.Action)
 	assert.Equal(t, defaultPaymentSizeMsat-defaultFee, res.AmountMsat)
 	assert.Equal(t, defaultFee, *res.FeeMsat)
 	assert.Equal(t, defaultChannelScid, uint64(res.Scid))
@@ -254,7 +254,7 @@ func Test_NoMpp_AmountMinFeePlusHtlcMinPlusOne(t *testing.T) {
 	i := setupInterceptor(ctx, nil)
 
 	res := i.Intercept(createPart(&part{amt: defaultMinViableAmount}))
-	assert.Equal(t, INTERCEPT_RESUME_WITH_ONION, res.Action)
+	assert.Equal(t, shared.INTERCEPT_RESUME_WITH_ONION, res.Action)
 	assert.Equal(t, defaultConfig().HtlcMinimumMsat, res.AmountMsat)
 	assert.Equal(t, defaultOpeningFeeParams().MinFeeMsat, *res.FeeMsat)
 	assert.Equal(t, defaultChannelScid, uint64(res.Scid))
@@ -269,8 +269,8 @@ func Test_NoMpp_AmtBelowMinimum(t *testing.T) {
 	i := setupInterceptor(ctx, nil)
 
 	res := i.Intercept(createPart(&part{amt: defaultMinViableAmount - 1}))
-	assert.Equal(t, INTERCEPT_FAIL_HTLC_WITH_CODE, res.Action)
-	assert.Equal(t, FAILURE_UNKNOWN_NEXT_PEER, res.FailureCode)
+	assert.Equal(t, shared.INTERCEPT_FAIL_HTLC_WITH_CODE, res.Action)
+	assert.Equal(t, shared.FAILURE_UNKNOWN_NEXT_PEER, res.FailureCode)
 	assertEmpty(t, i)
 }
 
@@ -282,7 +282,7 @@ func Test_NoMpp_AmtAtMaximum(t *testing.T) {
 	i := setupInterceptor(ctx, nil)
 
 	res := i.Intercept(createPart(&part{amt: defaultConfig().MaxPaymentSizeMsat}))
-	assert.Equal(t, INTERCEPT_RESUME_WITH_ONION, res.Action)
+	assert.Equal(t, shared.INTERCEPT_RESUME_WITH_ONION, res.Action)
 	assertEmpty(t, i)
 }
 
@@ -294,8 +294,8 @@ func Test_NoMpp_AmtAboveMaximum(t *testing.T) {
 	i := setupInterceptor(ctx, nil)
 
 	res := i.Intercept(createPart(&part{amt: defaultConfig().MaxPaymentSizeMsat + 1}))
-	assert.Equal(t, INTERCEPT_FAIL_HTLC_WITH_CODE, res.Action)
-	assert.Equal(t, FAILURE_UNKNOWN_NEXT_PEER, res.FailureCode)
+	assert.Equal(t, shared.INTERCEPT_FAIL_HTLC_WITH_CODE, res.Action)
+	assert.Equal(t, shared.FAILURE_UNKNOWN_NEXT_PEER, res.FailureCode)
 	assertEmpty(t, i)
 }
 
@@ -307,8 +307,8 @@ func Test_NoMpp_CltvDeltaBelowMinimum(t *testing.T) {
 	i := setupInterceptor(ctx, nil)
 
 	res := i.Intercept(createPart(&part{cltvDelta: 145}))
-	assert.Equal(t, INTERCEPT_FAIL_HTLC_WITH_CODE, res.Action)
-	assert.Equal(t, FAILURE_INCORRECT_CLTV_EXPIRY, res.FailureCode)
+	assert.Equal(t, shared.INTERCEPT_FAIL_HTLC_WITH_CODE, res.Action)
+	assert.Equal(t, shared.FAILURE_INCORRECT_CLTV_EXPIRY, res.FailureCode)
 	assertEmpty(t, i)
 }
 
@@ -320,7 +320,7 @@ func Test_NoMpp_HigherCltvDelta(t *testing.T) {
 	i := setupInterceptor(ctx, nil)
 
 	res := i.Intercept(createPart(&part{cltvDelta: 1000}))
-	assert.Equal(t, INTERCEPT_RESUME_WITH_ONION, res.Action)
+	assert.Equal(t, shared.INTERCEPT_RESUME_WITH_ONION, res.Action)
 	assertEmpty(t, i)
 }
 
@@ -335,8 +335,8 @@ func Test_NoMpp_ParamsExpired(t *testing.T) {
 	i := setupInterceptor(ctx, &interceptP{store: store})
 
 	res := i.Intercept(createPart(nil))
-	assert.Equal(t, INTERCEPT_FAIL_HTLC_WITH_CODE, res.Action)
-	assert.Equal(t, FAILURE_UNKNOWN_NEXT_PEER, res.FailureCode)
+	assert.Equal(t, shared.INTERCEPT_FAIL_HTLC_WITH_CODE, res.Action)
+	assert.Equal(t, shared.FAILURE_UNKNOWN_NEXT_PEER, res.FailureCode)
 	assertEmpty(t, i)
 }
 
@@ -348,7 +348,7 @@ func Test_NoMpp_ChannelAlreadyOpened_NotComplete_Forwards(t *testing.T) {
 	i := setupInterceptor(ctx, &interceptP{store: store})
 
 	res := i.Intercept(createPart(nil))
-	assert.Equal(t, INTERCEPT_RESUME_WITH_ONION, res.Action)
+	assert.Equal(t, shared.INTERCEPT_RESUME_WITH_ONION, res.Action)
 	assertEmpty(t, i)
 }
 
@@ -361,8 +361,8 @@ func Test_NoMpp_ChannelAlreadyOpened_Complete_Fails(t *testing.T) {
 	i := setupInterceptor(ctx, &interceptP{store: store})
 
 	res := i.Intercept(createPart(nil))
-	assert.Equal(t, INTERCEPT_FAIL_HTLC_WITH_CODE, res.Action)
-	assert.Equal(t, FAILURE_UNKNOWN_NEXT_PEER, res.FailureCode)
+	assert.Equal(t, shared.INTERCEPT_FAIL_HTLC_WITH_CODE, res.Action)
+	assert.Equal(t, shared.FAILURE_UNKNOWN_NEXT_PEER, res.FailureCode)
 	assertEmpty(t, i)
 }
 
@@ -374,7 +374,7 @@ func Test_Mpp_SinglePart_Happyflow(t *testing.T) {
 	i := setupInterceptor(ctx, &interceptP{store: mppStore()})
 
 	res := i.Intercept(createPart(&part{amt: defaultPaymentSizeMsat}))
-	assert.Equal(t, INTERCEPT_RESUME_WITH_ONION, res.Action)
+	assert.Equal(t, shared.INTERCEPT_RESUME_WITH_ONION, res.Action)
 	assert.Equal(t, defaultPaymentSizeMsat-defaultFee, res.AmountMsat)
 	assert.Equal(t, defaultFee, *res.FeeMsat)
 	assert.Equal(t, defaultChannelScid, uint64(res.Scid))
@@ -393,8 +393,8 @@ func Test_Mpp_SinglePart_AmtTooSmall(t *testing.T) {
 	start := time.Now()
 	res := i.Intercept(createPart(&part{amt: defaultPaymentSizeMsat - 1}))
 	end := time.Now()
-	assert.Equal(t, INTERCEPT_FAIL_HTLC_WITH_CODE, res.Action)
-	assert.Equal(t, FAILURE_TEMPORARY_CHANNEL_FAILURE, res.FailureCode)
+	assert.Equal(t, shared.INTERCEPT_FAIL_HTLC_WITH_CODE, res.Action)
+	assert.Equal(t, shared.FAILURE_TEMPORARY_CHANNEL_FAILURE, res.FailureCode)
 	assert.GreaterOrEqual(t, end.Sub(start).Milliseconds(), config.MppTimeout.Milliseconds())
 	assertEmpty(t, i)
 }
@@ -411,8 +411,8 @@ func Test_Mpp_TwoParts_FinalizedOnSecond(t *testing.T) {
 
 	var wg sync.WaitGroup
 	wg.Add(2)
-	var res1 *InterceptResult
-	var res2 *InterceptResult
+	var res1 shared.InterceptResult
+	var res2 shared.InterceptResult
 	var t1 time.Time
 	var t2 time.Time
 	start := time.Now()
@@ -437,11 +437,11 @@ func Test_Mpp_TwoParts_FinalizedOnSecond(t *testing.T) {
 	}()
 
 	wg.Wait()
-	assert.Equal(t, INTERCEPT_RESUME_WITH_ONION, res1.Action)
+	assert.Equal(t, shared.INTERCEPT_RESUME_WITH_ONION, res1.Action)
 	assert.Equal(t, defaultPaymentSizeMsat-defaultConfig().HtlcMinimumMsat-defaultFee, res1.AmountMsat)
 	assert.Equal(t, defaultFee, *res1.FeeMsat)
 
-	assert.Equal(t, INTERCEPT_RESUME_WITH_ONION, res2.Action)
+	assert.Equal(t, shared.INTERCEPT_RESUME_WITH_ONION, res2.Action)
 	assert.Equal(t, defaultConfig().HtlcMinimumMsat, res2.AmountMsat)
 	assert.Nil(t, res2.FeeMsat)
 
@@ -466,9 +466,9 @@ func Test_Mpp_BadSecondPart_ThirdPartCompletes(t *testing.T) {
 
 	var wg sync.WaitGroup
 	wg.Add(2)
-	var res1 *InterceptResult
-	var res2 *InterceptResult
-	var res3 *InterceptResult
+	var res1 shared.InterceptResult
+	var res2 shared.InterceptResult
+	var res3 shared.InterceptResult
 	var t1 time.Time
 	var t2 time.Time
 	var t3 time.Time
@@ -500,14 +500,14 @@ func Test_Mpp_BadSecondPart_ThirdPartCompletes(t *testing.T) {
 	}()
 
 	wg.Wait()
-	assert.Equal(t, INTERCEPT_RESUME_WITH_ONION, res1.Action)
+	assert.Equal(t, shared.INTERCEPT_RESUME_WITH_ONION, res1.Action)
 	assert.Equal(t, defaultPaymentSizeMsat-defaultConfig().HtlcMinimumMsat-defaultFee, res1.AmountMsat)
 	assert.Equal(t, defaultFee, *res1.FeeMsat)
 
-	assert.Equal(t, INTERCEPT_FAIL_HTLC_WITH_CODE, res2.Action)
-	assert.Equal(t, FAILURE_AMOUNT_BELOW_MINIMUM, res2.FailureCode)
+	assert.Equal(t, shared.INTERCEPT_FAIL_HTLC_WITH_CODE, res2.Action)
+	assert.Equal(t, shared.FAILURE_AMOUNT_BELOW_MINIMUM, res2.FailureCode)
 
-	assert.Equal(t, INTERCEPT_RESUME_WITH_ONION, res3.Action)
+	assert.Equal(t, shared.INTERCEPT_RESUME_WITH_ONION, res3.Action)
 	assert.Equal(t, defaultConfig().HtlcMinimumMsat, res3.AmountMsat)
 	assert.Nil(t, res3.FeeMsat)
 
@@ -526,8 +526,8 @@ func Test_Mpp_CltvDeltaBelowMinimum(t *testing.T) {
 	i := setupInterceptor(ctx, &interceptP{store: mppStore()})
 
 	res := i.Intercept(createPart(&part{cltvDelta: 145}))
-	assert.Equal(t, INTERCEPT_FAIL_HTLC_WITH_CODE, res.Action)
-	assert.Equal(t, FAILURE_INCORRECT_CLTV_EXPIRY, res.FailureCode)
+	assert.Equal(t, shared.INTERCEPT_FAIL_HTLC_WITH_CODE, res.Action)
+	assert.Equal(t, shared.FAILURE_INCORRECT_CLTV_EXPIRY, res.FailureCode)
 	assertEmpty(t, i)
 }
 
@@ -539,7 +539,7 @@ func Test_Mpp_HigherCltvDelta(t *testing.T) {
 	i := setupInterceptor(ctx, &interceptP{store: mppStore()})
 
 	res := i.Intercept(createPart(&part{cltvDelta: 1000}))
-	assert.Equal(t, INTERCEPT_RESUME_WITH_ONION, res.Action)
+	assert.Equal(t, shared.INTERCEPT_RESUME_WITH_ONION, res.Action)
 	assertEmpty(t, i)
 }
 
@@ -554,8 +554,8 @@ func Test_Mpp_ParamsExpired(t *testing.T) {
 	i := setupInterceptor(ctx, &interceptP{store: store})
 
 	res := i.Intercept(createPart(nil))
-	assert.Equal(t, INTERCEPT_FAIL_HTLC_WITH_CODE, res.Action)
-	assert.Equal(t, FAILURE_UNKNOWN_NEXT_PEER, res.FailureCode)
+	assert.Equal(t, shared.INTERCEPT_FAIL_HTLC_WITH_CODE, res.Action)
+	assert.Equal(t, shared.FAILURE_UNKNOWN_NEXT_PEER, res.FailureCode)
 	assertEmpty(t, i)
 }
 
@@ -572,8 +572,8 @@ func Test_Mpp_ParamsExpireInFlight(t *testing.T) {
 		UTC().Add(time.Millisecond * 250).Format(lsps0.TIME_FORMAT)
 	res := i.Intercept(createPart(&part{amt: defaultPaymentSizeMsat - 1}))
 	end := time.Now()
-	assert.Equal(t, INTERCEPT_FAIL_HTLC_WITH_CODE, res.Action)
-	assert.Equal(t, FAILURE_UNKNOWN_NEXT_PEER, res.FailureCode)
+	assert.Equal(t, shared.INTERCEPT_FAIL_HTLC_WITH_CODE, res.Action)
+	assert.Equal(t, shared.FAILURE_UNKNOWN_NEXT_PEER, res.FailureCode)
 
 	// Using 249 here instead of 250 to avoid flakiness in the test. It
 	// sometimes ccompletes in 249 milliseconds.
@@ -591,9 +591,9 @@ func Test_Mpp_PartReplacement(t *testing.T) {
 
 	var wg sync.WaitGroup
 	wg.Add(3)
-	var res1 *InterceptResult
-	var res2 *InterceptResult
-	var res3 *InterceptResult
+	var res1 shared.InterceptResult
+	var res2 shared.InterceptResult
+	var res3 shared.InterceptResult
 	var t1 time.Time
 	var t2 time.Time
 	var t3 time.Time
@@ -628,13 +628,13 @@ func Test_Mpp_PartReplacement(t *testing.T) {
 	}()
 
 	wg.Wait()
-	assert.Equal(t, INTERCEPT_IGNORE, res1.Action)
+	assert.Equal(t, shared.INTERCEPT_IGNORE, res1.Action)
 
-	assert.Equal(t, INTERCEPT_RESUME_WITH_ONION, res2.Action)
+	assert.Equal(t, shared.INTERCEPT_RESUME_WITH_ONION, res2.Action)
 	assert.Equal(t, defaultPaymentSizeMsat-defaultConfig().HtlcMinimumMsat-defaultFee, res2.AmountMsat)
 	assert.Equal(t, defaultFee, *res2.FeeMsat)
 
-	assert.Equal(t, INTERCEPT_RESUME_WITH_ONION, res3.Action)
+	assert.Equal(t, shared.INTERCEPT_RESUME_WITH_ONION, res3.Action)
 	assert.Equal(t, defaultConfig().HtlcMinimumMsat, res3.AmountMsat)
 	assert.Nil(t, res3.FeeMsat)
 
@@ -653,7 +653,7 @@ func Test_Mpp_ChannelAlreadyOpened_NotComplete_Forwards(t *testing.T) {
 	i := setupInterceptor(ctx, &interceptP{store: store})
 
 	res := i.Intercept(createPart(nil))
-	assert.Equal(t, INTERCEPT_RESUME_WITH_ONION, res.Action)
+	assert.Equal(t, shared.INTERCEPT_RESUME_WITH_ONION, res.Action)
 	assertEmpty(t, i)
 }
 
@@ -666,8 +666,8 @@ func Test_Mpp_ChannelAlreadyOpened_Complete_Fails(t *testing.T) {
 	i := setupInterceptor(ctx, &interceptP{store: store})
 
 	res := i.Intercept(createPart(nil))
-	assert.Equal(t, INTERCEPT_FAIL_HTLC_WITH_CODE, res.Action)
-	assert.Equal(t, FAILURE_UNKNOWN_NEXT_PEER, res.FailureCode)
+	assert.Equal(t, shared.INTERCEPT_FAIL_HTLC_WITH_CODE, res.Action)
+	assert.Equal(t, shared.FAILURE_UNKNOWN_NEXT_PEER, res.FailureCode)
 	assertEmpty(t, i)
 }
 
@@ -714,7 +714,7 @@ func Test_Mpp_Performance(t *testing.T) {
 					amt:  defaultPaymentSizeMsat / uint64(partCount),
 				}))
 
-				assert.Equal(t, INTERCEPT_RESUME_WITH_ONION, res.Action)
+				assert.Equal(t, shared.INTERCEPT_RESUME_WITH_ONION, res.Action)
 				wg.Done()
 			}()
 		}
