@@ -8,7 +8,6 @@ import (
 	"math"
 	"time"
 
-	"github.com/breez/lspd/basetypes"
 	"github.com/breez/lspd/chain"
 	"github.com/breez/lspd/lightning"
 	"github.com/breez/lspd/lsps0"
@@ -101,7 +100,7 @@ type InterceptRequest struct {
 	// Identifier that uniquely identifies this htlc.
 	// For cln, that's hash of the next onion or the shared secret.
 	Identifier         string
-	Scid               basetypes.ShortChannelID
+	Scid               lightning.ShortChannelID
 	PaymentHash        []byte
 	IncomingAmountMsat uint64
 	OutgoingAmountMsat uint64
@@ -122,12 +121,12 @@ type InterceptResult struct {
 	FailureCode InterceptFailureCode
 	AmountMsat  uint64
 	FeeMsat     *uint64
-	Scid        basetypes.ShortChannelID
+	Scid        lightning.ShortChannelID
 }
 
 type paymentState struct {
 	id                       string
-	fakeScid                 basetypes.ShortChannelID
+	fakeScid                 lightning.ShortChannelID
 	incomingSumMsat          uint64
 	outgoingSumMsat          uint64
 	paymentSizeMsat          uint64
@@ -163,7 +162,7 @@ type registrationReadyEvent struct {
 
 type paymentChanOpenedEvent struct {
 	paymentId       string
-	scid            basetypes.ShortChannelID
+	scid            lightning.ShortChannelID
 	htlcMinimumMsat uint64
 }
 
@@ -273,7 +272,7 @@ func (i *Interceptor) handleNewPart(part *partState) {
 
 func (i *Interceptor) fetchRegistration(
 	paymentId string,
-	scid basetypes.ShortChannelID,
+	scid lightning.ShortChannelID,
 ) {
 	registration, err := i.store.GetBuyRegistration(
 		context.TODO(),

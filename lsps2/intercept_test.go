@@ -10,7 +10,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/breez/lspd/basetypes"
 	"github.com/breez/lspd/chain"
 	"github.com/breez/lspd/lightning"
 	"github.com/breez/lspd/lsps0"
@@ -33,8 +32,8 @@ var defaultOutPoint = wire.NewOutPoint(&defaultChainHash, 0)
 var defaultChannelScid uint64 = 456
 var defaultChanResult = &lightning.GetChannelResult{
 	HtlcMinimumMsat:    defaultConfig().HtlcMinimumMsat,
-	InitialChannelID:   basetypes.ShortChannelID(defaultChannelScid),
-	ConfirmedChannelID: basetypes.ShortChannelID(defaultChannelScid),
+	InitialChannelID:   lightning.ShortChannelID(defaultChannelScid),
+	ConfirmedChannelID: lightning.ShortChannelID(defaultChannelScid),
 }
 
 func defaultOpeningFeeParams() shared.OpeningFeeParams {
@@ -52,7 +51,7 @@ func defaultStore() *mockLsps2Store {
 		registrations: map[uint64]*BuyRegistration{
 			defaultScid: {
 				PeerId:           "peer",
-				Scid:             basetypes.ShortChannelID(defaultScid),
+				Scid:             lightning.ShortChannelID(defaultScid),
 				Mode:             OpeningMode_NoMppVarInvoice,
 				OpeningFeeParams: defaultOpeningFeeParams(),
 			},
@@ -156,9 +155,9 @@ func createPart(p *part) *InterceptRequest {
 		id = p.id
 	}
 
-	scid := basetypes.ShortChannelID(defaultScid)
+	scid := lightning.ShortChannelID(defaultScid)
 	if p != nil && p.scid != 0 {
-		scid = basetypes.ShortChannelID(p.scid)
+		scid = lightning.ShortChannelID(p.scid)
 	}
 
 	ph := []byte("fake payment hash")
@@ -689,7 +688,7 @@ func Test_Mpp_Performance(t *testing.T) {
 		client.openResponses = append(client.openResponses, defaultOutPoint)
 		store.registrations[scid] = &BuyRegistration{
 			PeerId:           strconv.FormatUint(scid, 10),
-			Scid:             basetypes.ShortChannelID(scid),
+			Scid:             lightning.ShortChannelID(scid),
 			Mode:             OpeningMode_MppFixedInvoice,
 			OpeningFeeParams: defaultOpeningFeeParams(),
 			PaymentSizeMsat:  &defaultPaymentSizeMsat,
