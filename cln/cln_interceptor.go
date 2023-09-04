@@ -293,16 +293,18 @@ func encodePayloadWithNextHop(payload []byte, scid lightning.ShortChannelID, amo
 		uTlvMap[uint64(t)] = b
 	}
 
-	if feeMsat != nil {
-		// Add an extra_fee record.
-		fee := shared.NewExtraFeeRecord(feeMsat)
-		feebuf := bytes.NewBuffer([]byte{})
-		if err := fee.Encode(feebuf); err != nil {
-			return nil, fmt.Errorf("failed to encode extra_fee %x: %v", innerPayload[:], err)
-		}
+	// TODO: Add the extra_fee TLV to the update_add_htlc message.
+	// Below snippet doesn't work.
+	// if feeMsat != nil {
+	// 	// Add an extra_fee record.
+	// 	fee := shared.NewExtraFeeRecord(feeMsat)
+	// 	feebuf := bytes.NewBuffer([]byte{})
+	// 	if err := fee.Encode(feebuf); err != nil {
+	// 		return nil, fmt.Errorf("failed to encode extra_fee %x: %v", innerPayload[:], err)
+	// 	}
 
-		uTlvMap[uint64(shared.ExtraFeeTlvType)] = feebuf.Bytes()
-	}
+	// 	uTlvMap[uint64(shared.ExtraFeeTlvType)] = feebuf.Bytes()
+	// }
 
 	tlvRecords := tlv.MapToRecords(uTlvMap)
 	s, err = tlv.NewStream(tlvRecords...)
