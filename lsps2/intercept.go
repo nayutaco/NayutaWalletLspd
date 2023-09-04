@@ -423,7 +423,7 @@ func (i *Interceptor) handleRegistrationReady(ev *registrationReadyEvent) {
 
 func (i *Interceptor) handleNotRegistered(paymentId string) {
 	i.finalizeAllParts(paymentId, &shared.InterceptResult{
-		Action: shared.INTERCEPT_CANNOT_HANDLE,
+		Action: shared.INTERCEPT_RESUME,
 	})
 }
 

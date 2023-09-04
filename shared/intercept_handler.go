@@ -14,7 +14,6 @@ const (
 	INTERCEPT_RESUME_WITH_ONION   InterceptAction = 1
 	INTERCEPT_FAIL_HTLC_WITH_CODE InterceptAction = 2
 	INTERCEPT_IGNORE              InterceptAction = 3
-	INTERCEPT_CANNOT_HANDLE       InterceptAction = 4
 )
 
 type InterceptFailureCode uint16

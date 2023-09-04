@@ -210,7 +210,7 @@ func Test_NotBought_SinglePart(t *testing.T) {
 	defer cancel()
 	i := setupInterceptor(ctx, nil)
 	res := i.Intercept(createPart(&part{scid: 999}))
-	assert.Equal(t, shared.INTERCEPT_CANNOT_HANDLE, res.Action)
+	assert.Equal(t, shared.INTERCEPT_RESUME, res.Action)
 	assertEmpty(t, i)
 }
 
@@ -227,8 +227,8 @@ func Test_NotBought_TwoParts(t *testing.T) {
 	var res2 shared.InterceptResult
 	runIntercept(i, createPart(&part{id: "second", scid: 999}), &res2, &wg)
 	wg.Wait()
-	assert.Equal(t, shared.INTERCEPT_CANNOT_HANDLE, res1.Action)
-	assert.Equal(t, shared.INTERCEPT_CANNOT_HANDLE, res2.Action)
+	assert.Equal(t, shared.INTERCEPT_RESUME, res1.Action)
+	assert.Equal(t, shared.INTERCEPT_RESUME, res2.Action)
 	assertEmpty(t, i)
 }
 
