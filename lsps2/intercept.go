@@ -11,6 +11,7 @@ import (
 	"github.com/breez/lspd/basetypes"
 	"github.com/breez/lspd/chain"
 	"github.com/breez/lspd/lightning"
+	"github.com/breez/lspd/lsps0"
 )
 
 type InterceptAction int
@@ -388,7 +389,7 @@ func (i *Interceptor) handlePartAwaitingRegistration(ev *awaitingRegistrationEve
 	}
 
 	validUntil, err := time.Parse(
-		basetypes.TIME_FORMAT,
+		lsps0.TIME_FORMAT,
 		payment.registration.OpeningFeeParams.ValidUntil,
 	)
 	if err != nil {

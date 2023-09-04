@@ -13,6 +13,7 @@ import (
 	"github.com/breez/lspd/basetypes"
 	"github.com/breez/lspd/chain"
 	"github.com/breez/lspd/lightning"
+	"github.com/breez/lspd/lsps0"
 	"github.com/breez/lspd/shared"
 	"github.com/btcsuite/btcd/chaincfg/chainhash"
 	"github.com/btcsuite/btcd/wire"
@@ -40,7 +41,7 @@ func defaultOpeningFeeParams() shared.OpeningFeeParams {
 	return shared.OpeningFeeParams{
 		MinFeeMsat:           1000,
 		Proportional:         1000,
-		ValidUntil:           time.Now().UTC().Add(5 * time.Hour).Format(basetypes.TIME_FORMAT),
+		ValidUntil:           time.Now().UTC().Add(5 * time.Hour).Format(lsps0.TIME_FORMAT),
 		MinLifetime:          1000,
 		MaxClientToSelfDelay: 2016,
 		Promise:              "fake",
@@ -331,7 +332,7 @@ func Test_NoMpp_ParamsExpired(t *testing.T) {
 	defer cancel()
 	store := defaultStore()
 	store.registrations[defaultScid].OpeningFeeParams.ValidUntil = time.Now().
-		UTC().Add(-time.Nanosecond).Format(basetypes.TIME_FORMAT)
+		UTC().Add(-time.Nanosecond).Format(lsps0.TIME_FORMAT)
 	i := setupInterceptor(ctx, &interceptP{store: store})
 
 	res := i.Intercept(createPart(nil))
@@ -550,7 +551,7 @@ func Test_Mpp_ParamsExpired(t *testing.T) {
 	defer cancel()
 	store := mppStore()
 	store.registrations[defaultScid].OpeningFeeParams.ValidUntil = time.Now().
-		UTC().Add(-time.Nanosecond).Format(basetypes.TIME_FORMAT)
+		UTC().Add(-time.Nanosecond).Format(lsps0.TIME_FORMAT)
 	i := setupInterceptor(ctx, &interceptP{store: store})
 
 	res := i.Intercept(createPart(nil))
@@ -569,7 +570,7 @@ func Test_Mpp_ParamsExpireInFlight(t *testing.T) {
 
 	start := time.Now()
 	store.registrations[defaultScid].OpeningFeeParams.ValidUntil = start.
-		UTC().Add(time.Millisecond * 250).Format(basetypes.TIME_FORMAT)
+		UTC().Add(time.Millisecond * 250).Format(lsps0.TIME_FORMAT)
 	res := i.Intercept(createPart(&part{amt: defaultPaymentSizeMsat - 1}))
 	end := time.Now()
 	assert.Equal(t, INTERCEPT_FAIL_HTLC_WITH_CODE, res.Action)
