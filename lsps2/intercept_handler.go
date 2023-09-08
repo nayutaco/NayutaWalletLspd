@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"math"
+	"strings"
 	"time"
 
 	"github.com/breez/lspd/chain"
@@ -500,6 +501,12 @@ func (i *Interceptor) ensureChannelOpen(payment *paymentState) {
 				capacity,
 				err,
 			)
+
+			code := shared.FAILURE_UNKNOWN_NEXT_PEER
+			if strings.Contains(err.Error(), "not enough funds") {
+				code = shared.FAILURE_TEMPORARY_CHANNEL_FAILURE
+			}
+
 			// TODO: Verify that a client disconnect before receiving
 			// funding_signed doesn't cause the OpenChannel call to error.
 			// unknown_next_peer should only be returned if the client rejects
@@ -508,7 +515,7 @@ func (i *Interceptor) ensureChannelOpen(payment *paymentState) {
 			// temporary_channel_failure should be returned.
 			i.paymentFailure <- &paymentFailureEvent{
 				paymentId: payment.id,
-				code:      shared.FAILURE_UNKNOWN_NEXT_PEER,
+				code:      code,
 			}
 			return
 		}
