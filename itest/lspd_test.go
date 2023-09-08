@@ -199,4 +199,20 @@ var allTestCases = []*testCase{
 		test:    testLsps2HappyFlow,
 		isLsps2: true,
 	},
+	{
+		name:    "testLsps2Cltv",
+		test:    testLsps2Cltv,
+		isLsps2: true,
+	},
+	{
+		name:    "testLsps2NoBalance",
+		test:    testLsps2NoBalance,
+		isLsps2: true,
+	},
+	{
+		name:          "testLsps2ZeroConfUtxo",
+		test:          testLsps2ZeroConfUtxo,
+		isLsps2:       true,
+		skipCreateLsp: true,
+	},
 }

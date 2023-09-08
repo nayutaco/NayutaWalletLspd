@@ -9,7 +9,7 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func testLsps2HappyFlow(p *testParams) {
+func testLsps2Cltv(p *testParams) {
 	alice := lntest.NewClnNode(p.h, p.m, "Alice")
 	alice.Start()
 	alice.Fund(10000000)
@@ -19,7 +19,7 @@ func testLsps2HappyFlow(p *testParams) {
 	channel := alice.OpenChannel(p.lsp.LightningNode(), &lntest.OpenChannelOptions{
 		AmountSat: publicChanAmount,
 	})
-	alice.WaitForChannelReady(channel)
+	aliceLspScid := alice.WaitForChannelReady(channel)
 
 	log.Print("Connecting bob to lspd")
 	p.BreezClient().Node().ConnectPeer(p.lsp.LightningNode())
@@ -54,19 +54,10 @@ func testLsps2HappyFlow(p *testParams) {
 	log.Printf("Waiting %v to allow htlc interceptor to activate.", htlcInterceptorDelay)
 	<-time.After(htlcInterceptorDelay)
 	log.Printf("Alice paying")
-	payResp := alice.Pay(outerInvoice.bolt11)
-	bobInvoice := p.BreezClient().Node().GetInvoice(payResp.PaymentHash)
+	route := constructRoute(p.Lsp().LightningNode(), p.BreezClient().Node(), aliceLspScid, lntest.NewShortChanIDFromString(buyResp.JitChannelScid), outerAmountMsat)
 
-	assert.Equal(p.t, payResp.PaymentPreimage, bobInvoice.PaymentPreimage)
-	assert.Equal(p.t, innerAmountMsat, bobInvoice.AmountReceivedMsat)
-
-	// Make sure capacity is correct
-	chans := p.BreezClient().Node().GetChannels()
-	assert.Equal(p.t, 1, len(chans))
-	c := chans[0]
-	AssertChannelCapacity(p.t, innerAmountMsat, c.CapacityMsat)
-
-	assert.Equal(p.t, c.RemoteReserveMsat, c.CapacityMsat/100)
-	log.Printf("local reserve: %d, remote reserve: %d", c.LocalReserveMsat, c.RemoteReserveMsat)
-	assert.Zero(p.t, c.LocalReserveMsat)
+	// Increment the delay by one (should be incremented by 2), so the cltv delta is too little.
+	route.Hops[0].Delay++
+	_, err := alice.PayViaRoute(outerAmountMsat, outerInvoice.paymentHash, outerInvoice.paymentSecret, route)
+	assert.Contains(p.t, err.Error(), "WIRE_INCORRECT_CLTV_EXPIRY")
 }
