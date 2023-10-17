@@ -1,0 +1,1 @@
+ALTER TABLE public.submarines DROP COLUMN script_version;

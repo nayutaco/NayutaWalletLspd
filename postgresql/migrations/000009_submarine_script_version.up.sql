@@ -1,0 +1,1 @@
+ALTER TABLE public.submarines ADD script_version integer NULL DEFAULT 0;

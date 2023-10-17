@@ -1,0 +1,79 @@
+# LN network
+NETWORK=testnet
+
+# LND data dir
+LND_DIR=${HOME}/.lnd
+
+# lncli command path
+LNCLI=${HOME}/go/bin/lncli
+
+# The network location of the lightning node, e.g. `12.34.56.78:9012` or `localhost:10011`
+LNIPADDR="`curl -s ifconfig.io`:9735"
+
+# LSP node name
+NODE_NAME="my node"
+
+# LND gRPC port to connect
+GRPCPORT=10009
+
+# LSP gRPC port to listen
+LSPDPORT=4000
+
+######
+# Fee
+#   lnd.conf:
+#     - bitcoin.basefee
+#     - bitcoin.feerate
+#
+#   feeMsats = basefee + (amountMsat * feerate / 1000000)
+#       ↓↓↓
+#   feeMsats = BASE_FEE_MSAT + (amountMsat * FEE_RATE)
+######
+
+# The base fee charged regardless of the number of milli-satoshis sent.
+#   bitcoin.basefee
+BASE_FEE_MSAT=1000
+
+# The effective fee rate in milli-satoshis.
+# The precision of this value goes up to 6 decimal places, so 1e-6.
+#   bitcoin.feerate/1000000
+FEE_RATE=0.000001
+
+# The required timelock delta for HTLCs forwarded over the channel.
+#   lnd.conf: bitcoin.timelockdelta
+TIME_LOCK_DELTA=40
+
+# minimum fee for using LSP service
+CHANNEL_MIN_FEE_MSAT=2000000
+
+# The feerate per 10000 sats
+CHANNEL_FEE_PERMYRIAD=40
+
+# Additional inbound capacity(for On-The-Fly channel creation and Submarine Swap)
+ADDITIONAL_CHANNEL_CAPACITY=100000
+
+# The channel can be closed if not used this duration in seconds.
+MAX_INACTIVATE_DURATION=3888000
+
+# maximum open channel capacity
+MAX_CHANNEL_CAPACITY=3500000
+
+# open private channel capacity(for OpenChannel API)
+PRIVATE_CHANNEL_CAPACITY=20000
+
+# open private channel feerate max
+OPEN_CHANNEL_FEE_MAX=1
+
+# connection
+TOKEN=""
+LSPD_PRIVATE_KEY=""
+
+# Slack settings
+SLACK_BOT_TOKEN=""
+SLACK_SIGNING_SECRET=""
+SLACK_CHANNEL=""
+SLACK_CHANNEL_ALARM=""
+
+# TLS
+LSP_KEY=""
+LSP_CERT=""

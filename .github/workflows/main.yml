@@ -1,0 +1,33 @@
+name: Go
+
+on:
+  pull_request:
+    branches:
+      - main
+      - 'lspd-*'
+  push:
+    branches:
+      - 'build-*'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v3
+
+    - name: Set up Go
+      uses: actions/setup-go@v3
+      with:
+        go-version: 1.19
+    - name: Configure git for private modules
+      env:
+        TOKEN: ${{ secrets.GA_PERSONAL_ACCESS_TOKEN }}
+        GOPRIVATE: "github.com/nayutaco"
+      run: git config --global url."https://${TOKEN}:x-oauth-basic@github.com".insteadOf "https://github.com"
+    - name: Build
+      run: |
+        go mod tidy
+        go build -v ./...
+
+    - name: Test
+      run: go test -v ./...

@@ -4,9 +4,10 @@ import (
 	"context"
 	"encoding/hex"
 	"fmt"
-	"log"
 	"os"
 	"time"
+
+	log "github.com/sirupsen/logrus"
 
 	"github.com/lightningnetwork/lnd/lnrpc"
 	"github.com/lightningnetwork/lnd/lnrpc/chainrpc"
@@ -44,21 +45,25 @@ func channelsSynchronize(client chainrpc.ChainNotifierClient) {
 		clientCtx := metadata.AppendToOutgoingContext(cancellableCtx, "macaroon", os.Getenv("LND_MACAROON_HEX"))
 		stream, err := client.RegisterBlockEpochNtfn(clientCtx, &chainrpc.BlockEpoch{})
 		if err != nil {
-			log.Printf("chainNotifierClient.RegisterBlockEpochNtfn(): %v", err)
+			logAlarmNotify("chainNotifierClient.RegisterBlockEpochNtfn(): %v", err)
 			cancel()
+			time.Sleep(1 * time.Second)
+			continue
 		}
 
 		for {
 			_, err := stream.Recv()
 			if err != nil {
-				log.Printf("stream.Recv: %v", err)
+				logFatal("stream.Recv: %v", err)
 				break
 			}
 			if lastSync.Add(5 * time.Minute).Before(time.Now()) {
 				time.Sleep(30 * time.Second)
 				err = channelsSynchronizeOnce()
 				lastSync = time.Now()
-				log.Printf("channelsSynchronizeOnce() err: %v", err)
+				if err != nil {
+					logAlarmNotify("channelsSynchronizeOnce() err: %v", err)
+				}
 			}
 		}
 		cancel()
@@ -66,28 +71,27 @@ func channelsSynchronize(client chainrpc.ChainNotifierClient) {
 }
 
 func channelsSynchronizeOnce() error {
-	log.Printf("channelsSynchronizeOnce - begin")
+	log.Trace("channelsSynchronizeOnce")
 	clientCtx := metadata.AppendToOutgoingContext(context.Background(), "macaroon", os.Getenv("LND_MACAROON_HEX"))
 	channels, err := client.ListChannels(clientCtx, &lnrpc.ListChannelsRequest{PrivateOnly: true})
 	if err != nil {
-		log.Printf("ListChannels error: %v", err)
-		return fmt.Errorf("client.ListChannels() error: %w", err)
+		return logAlarmNotify("ListChannels error: %v", err)
 	}
-	log.Printf("channelsSynchronizeOnce - received channels")
+	// log.Trace("channelsSynchronizeOnce - received channels")
 	lastUpdate := time.Now()
 	for _, c := range channels.Channels {
 		nodeID, err := hex.DecodeString(c.RemotePubkey)
 		if err != nil {
-			log.Printf("hex.DecodeString in channelsSynchronizeOnce error: %v", err)
+			logAlarmNotify("hex.DecodeString in channelsSynchronizeOnce error: %v", err)
 			continue
 		}
-		err = insertChannel(c.ChanId, c.ChannelPoint, nodeID, lastUpdate)
+		err = insertChannel(c.ChanId, c.ChannelPoint, nodeID, lastUpdate, dbOpenChanReasonSync)
 		if err != nil {
-			log.Printf("insertChannel(%v, %v, %x) in channelsSynchronizeOnce error: %v", c.ChanId, c.ChannelPoint, nodeID, err)
+			logAlarmNotify("insertChannel(%v, %v, %x) in channelsSynchronizeOnce error: %v", c.ChanId, c.ChannelPoint, nodeID, err)
 			continue
 		}
 	}
-	log.Printf("channelsSynchronizeOnce - done")
+	log.Trace("channelsSynchronizeOnce - done")
 
 	return nil
 }
@@ -95,7 +99,9 @@ func channelsSynchronizeOnce() error {
 func forwardingHistorySynchronize() {
 	for {
 		err := forwardingHistorySynchronizeOnce()
-		log.Printf("forwardingHistorySynchronizeOnce() err: %v", err)
+		if err != nil {
+			logAlarmNotify("forwardingHistorySynchronizeOnce() err: %v", err)
+		}
 		time.Sleep(1 * time.Minute)
 	}
 }
@@ -103,14 +109,14 @@ func forwardingHistorySynchronize() {
 func forwardingHistorySynchronizeOnce() error {
 	last, err := lastForwardingEvent()
 	if err != nil {
-		return fmt.Errorf("lastForwardingEvent() error: %w", err)
+		return fmt.Errorf("lastForwardingEvent() error: %v", err)
 	}
-	log.Printf("last1: %v", last)
+	// log.Tracef("last1: %v", last)
 	last = last/1_000_000_000 - 1*3600
 	if last <= 0 {
 		last = 1
 	}
-	log.Printf("last2: %v", last)
+	// log.Tracef("last2: %v", last)
 	now := time.Now()
 	endTime := uint64(now.Add(time.Hour * 24).Unix())
 	clientCtx := metadata.AppendToOutgoingContext(context.Background(), "macaroon", os.Getenv("LND_MACAROON_HEX"))
@@ -123,10 +129,8 @@ func forwardingHistorySynchronizeOnce() error {
 			IndexOffset:  indexOffset,
 		})
 		if err != nil {
-			log.Printf("ForwardingHistory error: %v", err)
-			return fmt.Errorf("client.ForwardingHistory() error: %w", err)
+			return fmt.Errorf("client.ForwardingHistory() error: %v", err)
 		}
-		log.Printf("Offset: %v, Events: %v", indexOffset, len(forwardHistory.ForwardingEvents))
 		if len(forwardHistory.ForwardingEvents) == 0 {
 			break
 		}
@@ -134,8 +138,7 @@ func forwardingHistorySynchronizeOnce() error {
 		cfe := copyFromEvents{events: forwardHistory.ForwardingEvents, idx: -1}
 		err = insertForwardingEvents(&cfe)
 		if err != nil {
-			log.Printf("insertForwardingEvents() error: %v", err)
-			return fmt.Errorf("insertForwardingEvents() error: %w", err)
+			return fmt.Errorf("insertForwardingEvents() error: %v", err)
 		}
 	}
 	return nil

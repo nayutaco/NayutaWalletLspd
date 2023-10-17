@@ -1,0 +1,21 @@
+syntax = "proto3";
+
+option go_package="github.com/nayutaco/NayutaHub2Lspd/rpc";
+
+package rpc;
+
+service Internal {
+    rpc SetLogLevel(LogLevelRequest) returns (LogLevelReply) {}
+}
+
+message LogLevelRequest {
+  enum LogLevel {
+    LOGLEVEL_ERROR = 0;
+    LOGLEVEL_WARN = 1;
+    LOGLEVEL_INFO = 2;
+    LOGLEVEL_DEBUG = 3;
+    LOGLEVEL_TRACE = 4;
+  }
+  LogLevel level = 1;
+}
+message LogLevelReply {}
